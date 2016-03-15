@@ -1,4 +1,4 @@
-#/usr/bin/python3
+#!/usr/bin/python3
 # coding: utf-8
 from datetime import datetime, timedelta, timezone
 from itertools import groupby
@@ -43,11 +43,3 @@ this_week = today - timedelta(days=days_into_week)
 last_week = this_week - timedelta(days=7)
 days = groupby((q for q in quarter_hours if q >= last_week), by_day)
 pprint(group_to_dict(days))
-
-# qts = sorted(set(d.replace(minute=(d.minute//15)* 15, second=0) for d in dates))
-# days = groupby(qts, lambda d: d.date().isoformat())
-# list(days)
-# {day: sum(q) for day, q in days}
-# days = groupby(qts, lambda d: d.date().isoformat())
-# {day: sum(q) for day, q in days}
-# {day: sum(1 for _ in q)/4 for day, q in days}
