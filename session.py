@@ -1,8 +1,10 @@
 #!/usr/bin/python3
 # coding: utf-8
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import groupby
 from pprint import pprint
+from statistics import mean
 
 with open('log.txt') as log:
     strdates = [l.strip() for l in log]
@@ -21,6 +23,7 @@ count_hours = lambda qts: sum(1 for _ in qts) / 4
 by_day = lambda dt: dt.date().isoformat() + ' ' + dt.strftime('%a')
 by_week = lambda dt: '{0} W{1:02}'.format(*dt.isocalendar())
 by_month = lambda dt: '{dt.year}-{dt.month:02}'.format(dt=dt)
+by_weekday = lambda dt: dt.strftime('%w %a')
 
 group_to_dict = lambda grp: {key: count_hours(qts) for key, qts in grp}
 
@@ -42,3 +45,16 @@ print('Days')
 last_week = week_start - timedelta(days=7)
 days = groupby((q for q in quarter_hours if q >= last_week), by_day)
 pprint(group_to_dict(days))
+
+print()
+print('Days of Week')
+weekdays = defaultdict(list)
+for weekday, qts in groupby(quarter_hours, by_weekday):
+    hours = count_hours(qts)
+    weekdays[weekday].append(hours)
+pprint({
+    weekday: {
+        'avg': round(mean(hours), 2),
+        'sum': sum(hours),
+    } for weekday, hours in weekdays.items()
+})
