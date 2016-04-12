@@ -7,11 +7,11 @@ from pprint import pprint
 with open('log.txt') as log:
     strdates = [l.strip() for l in log]
 
-dfmt =  '%Y-%m-%dT%H:%M:%S%z'
+dfmt = '%Y-%m-%dT%H:%M:%S%z'
 dates = [datetime.strptime(d, dfmt) for d in strdates]
 quarter_hours = sorted(
     set(
-        d.replace(minute=(d.minute//15)* 15, second=0)
+        d.replace(minute=(d.minute//15) * 15, second=0)
         for d in dates
     )
 )
