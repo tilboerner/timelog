@@ -1,5 +1,8 @@
 #!/usr/bin/python3
 # coding: utf-8
+
+import re
+
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from itertools import groupby
@@ -9,8 +12,18 @@ from statistics import mean
 with open('log.txt') as log:
     strdates = [l.strip() for l in log]
 
+
 dfmt = '%Y-%m-%dT%H:%M:%S%z'
-dates = [datetime.strptime(d, dfmt) for d in strdates]
+tz_colon_regex = re.compile(
+    # YYYY-MM-DDThh:mm:ss[+-]HH:SS match the last colon if surroundings match
+    # (It needs to be removed so we can strptime with '%z'.)
+    r'(?<=\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[-+]\d{2}):(?=\d{2}\b)'
+)
+
+
+dates = [
+    datetime.strptime(tz_colon_regex.sub('', d, 1), dfmt) for d in strdates
+]
 quarter_hours = sorted(
     set(
         d.replace(minute=(d.minute//15) * 15, second=0)
