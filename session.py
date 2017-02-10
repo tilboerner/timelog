@@ -77,3 +77,22 @@ pprint({
         'sum': sum(hours),
     } for weekday, hours in weekdays.items()
 })
+
+print()
+print('Longest session')
+best_start = last_start = previous = quarter_hours[0] if quarter_hours else None
+best_duration = timedelta(0)
+max_step = timedelta(minutes=30, microseconds=-1)  # just short of 2 quarter hours
+for q in quarter_hours:
+    if q - previous > max_step:
+        current_duration = previous - last_start
+        if current_duration > best_duration:
+            best_start = last_start
+            best_duration = current_duration
+        last_start = q
+    previous = q
+print(
+    best_start and '{} to {} ({})'.format(
+        str(best_start), str(best_start + best_duration), str(best_duration)
+    )
+)
