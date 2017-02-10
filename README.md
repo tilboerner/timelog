@@ -21,7 +21,7 @@ date --iso-8601=seconds >> log.txt
 2. Run the script in the log.txt directory to see the aggregate output:
 
 ```sh
-$ ./session.py 
+$ ./timelog.py
 Months
 {'2016-02': 35.5}
 
