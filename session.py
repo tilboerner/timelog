@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 # coding: utf-8
+""" Simple analyzer and aggregator for a simple time log
+
+Reads a text file containing one iso-8601 timestamp per line and normalizes
+them to quarter-hours. These quarter-hours are treated as "time spent", which
+gets aggregated into stats by day, week, month and weekday, and printed.
+"""
 
 import re
 
