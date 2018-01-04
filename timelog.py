@@ -11,9 +11,14 @@ import re
 
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from itertools import groupby
+from itertools import groupby, islice
 from pprint import pprint
 from statistics import mean
+
+
+def take(n, iterable):
+    return islice(iterable, n)
+
 
 with open('log.txt') as log:
     strdates = [l.strip() for l in log]
@@ -47,7 +52,6 @@ by_weekday = lambda dt: dt.strftime('%w %a')
 group_to_dict = lambda grp: {key: count_hours(qts) for key, qts in grp}
 
 today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-week_start = today - timedelta(days=today.weekday())  # Monday=0, Sunday=6
 
 print('Months')
 months = groupby(quarter_hours, by_month)
@@ -55,15 +59,14 @@ pprint(group_to_dict(months))
 
 print()
 print('Weeks')
-six_weeks_ago = week_start - timedelta(days=7*6)
-weeks = groupby((q for q in quarter_hours if q >= six_weeks_ago), by_week)
-pprint(group_to_dict(weeks))
+weeks = groupby(quarter_hours, by_week)
+pprint(group_to_dict(take(8, weeks)))
 
 print()
 print('Days')
-last_week = week_start - timedelta(days=7)
-days = groupby((q for q in quarter_hours if q >= last_week), by_day)
-pprint(group_to_dict(days))
+days_count = today.isoweekday() + 7  # this week and last
+days = groupby(quarter_hours, by_day)
+pprint(group_to_dict(take(days_count, days)))
 
 print()
 print('Days of Week')
@@ -82,9 +85,9 @@ print()
 print('Longest session')
 best_start = last_start = previous = quarter_hours[0] if quarter_hours else None
 best_duration = timedelta(0)
-max_step = timedelta(minutes=30, microseconds=-1)  # just short of 2 quarter hours
+max_gap = timedelta(minutes=30, microseconds=-1)  # just short of 2 quarter hours
 for q in quarter_hours:
-    if q - previous > max_step:
+    if q - previous > max_gap:
         current_duration = previous - last_start
         if current_duration > best_duration:
             best_start = last_start
