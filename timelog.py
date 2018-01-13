@@ -16,7 +16,7 @@ from itertools import groupby, islice
 from operator import attrgetter
 from pprint import pformat
 from statistics import mean
-from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar  # noqa
+from typing import Any, Callable, Dict, Iterable, List, Optional, Type  # noqa
 
 
 def take(n, iterable):
@@ -57,14 +57,11 @@ def quantize(dt, *, resolution=timedelta(minutes=15)):
     from_zero = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second,
                           microseconds=dt.microsecond)
     start = dt - (from_zero % resolution)
-    return span(start, resolution)
+    return period(start, resolution)
 
 
-SpanT = TypeVar('SpanT', bound='span')
-
-
-class span:
-    """A span of time defined by (start + duration = end)"""
+class period:
+    """A period of time defined by (start + duration = end)"""
 
     ZERO = timedelta()
     HOUR = timedelta(seconds=3600)
@@ -77,10 +74,14 @@ class span:
     _DATETIME_ATTRS = {'year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond', 'tzinfo'}
     _TIMEDELTA_ATTRS = {'days', 'seconds', 'microseconds', 'total_seconds'}
 
-    def __new__(cls: Type[SpanT], start: datetime, duration: timedelta=None, *, end: datetime=None):
+    def __new__(cls: Type['period'],
+                start: datetime,
+                duration: timedelta=None,
+                *,
+                end: datetime=None):
         if end is None and duration is None:
             raise ValueError('Must provide end or duration')
-        if duration and duration < span.ZERO:
+        if duration and duration < period.ZERO:
             raise ValueError('duration must not be negative')
         if end and end < start:
             raise ValueError('end must be >= start')
@@ -101,10 +102,10 @@ class span:
             getattr(cls, name).__set__(obj, value)
 
     @classmethod
-    def combine(cls, spans, *, max_gap=ZERO):
+    def combine(cls, periods, *, max_gap=ZERO):
         combined = []
         combining = None
-        for nxt in sorted(spans, key=attrgetter('start')):
+        for nxt in sorted(periods, key=attrgetter('start')):
             if combining is None:
                 combining = nxt
                 continue
@@ -137,7 +138,7 @@ class span:
 
     def __eq__(self, other):
         return (
-            isinstance(other, span) and
+            isinstance(other, period) and
             (self.start, self.duration) == (other.start, other.duration))
 
     def __hash__(self):
@@ -146,12 +147,6 @@ class span:
     @property
     def end(self) -> datetime:
         return self.start + self.duration
-
-    @property
-    def resolution(self) -> timedelta:
-        one = self.start.resolution
-        two = self.duration.resolution
-        return one if one >= two else two
 
     def replace(self, *, start: datetime=None, duration: timedelta=None, end: datetime=None):
         if start is None:
@@ -164,8 +159,8 @@ class span:
         return self.replace(start=self.start.astimezone(tzinfo))
 
 
-def count_hours(spans):
-    return sum(x.duration / span.HOUR for x in spans)
+def count_hours(periods):
+    return sum(x.duration / period.HOUR for x in periods)
 
 
 def today(tz=timezone.utc):
@@ -174,24 +169,24 @@ def today(tz=timezone.utc):
 
 class Stat:
 
-    key = lambda span: span  # type: Callable[[span], Any] # noqa: 731
+    key = lambda period: period  # type: Callable[[period], Any] # noqa: 731
     fmt_key = str  # type: Callable[[Any], str]
     limit = None  # type: Optional[int]
     group_by = groupby
-    aggregate = count_hours  # type: Callable[[Iterable[span]], Any]
+    aggregate = count_hours  # type: Callable[[Iterable[period]], Any]
 
     @classmethod
-    def make(cls, spans):
+    def make(cls, periods):
         limit = cls.limit
-        grouped = cls.group_by(spans, key=cls.key)
+        grouped = cls.group_by(periods, key=cls.key)
         if limit:
             grouped = take(limit, grouped)
         fmt_key = cls.fmt_key
         aggregate = cls.aggregate
         return {fmt_key(key): aggregate(group) for key, group in grouped}
 
-    def __init__(self, spans):
-        self.stats = self.make(spans)
+    def __init__(self, periods):
+        self.stats = self.make(periods)
 
     def __str__(self):
         name = type(self).__name__
@@ -202,12 +197,12 @@ class Stat:
 
 
 class Months(Stat):
-    key = lambda span: (span.year, span.month)  # noqa: 731
+    key = lambda period: (period.year, period.month)  # noqa: 731
     fmt_key = lambda key: '{}-{:02}'.format(*key)  # noqa: 731
 
 
 class Weeks(Stat):
-    key = lambda span: span.start.isocalendar()[:2]  # noqa: 731
+    key = lambda period: period.start.isocalendar()[:2]  # noqa: 731
     fmt_key = lambda key: '{}-W{:02}'.format(*key)  # noqa: 731
     limit = 8
 
@@ -218,13 +213,13 @@ class Days(Stat):
 
 
 class Weekday(Stat):
-    key = lambda span: span.start.strftime('%w %a')  # noqa: 731
+    key = lambda period: period.start.strftime('%w %a')  # noqa: 731
 
     @classmethod
-    def make(cls, spans):
+    def make(cls, periods):
         key = cls.key
         weekdays = defaultdict(list)
-        for weekday, grp in groupby(spans, key=key):
+        for weekday, grp in groupby(periods, key=key):
             hours = count_hours(grp)
             weekdays[weekday].append(hours)
         return {
@@ -239,19 +234,17 @@ class LongestSession(Stat):
     max_gap = timedelta(minutes=30, microseconds=-1)  # just < 2 quarter hours
 
     @classmethod
-    def make(cls, spans):
-        combined = span.combine(spans, max_gap=cls.max_gap)
+    def make(cls, periods):
+        combined = period.combine(periods, max_gap=cls.max_gap)
         if combined:
-            return sorted(combined, key=span.by_duration)[-1]
+            return sorted(combined, key=period.by_duration)[-1]
 
 
 if __name__ == '__main__':
     dates = parse_many(read_lines(FILENAME))
     quarter_hours = sorted(
         set(map(quantize, dates)),
-        key=span.by_start
+        key=period.by_start
     )
     for stat in (Months, Weeks, Days, Weekday, LongestSession):
         print(stat(quarter_hours))
-
-# noqa: E731
