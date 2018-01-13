@@ -14,9 +14,9 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 from itertools import groupby, islice
 from operator import attrgetter
-from pprint import pprint
+from pprint import pformat
 from statistics import mean
-from typing import Dict, List, Type, TypeVar  # noqa
+from typing import Any, Callable, Dict, Iterable, List, Optional, Type, TypeVar  # noqa
 
 
 def take(n, iterable):
@@ -30,7 +30,7 @@ def read_lines(file, *, encoding='UTF-8'):
     if isinstance(file, (str, bytes)):
         get_file = partial(open, file, encoding=encoding)
     else:
-        get_file = lambda: file
+        get_file = lambda: file  # noqa: E731
     with get_file() as file:
         yield from map(str.strip, file)
 
@@ -60,7 +60,7 @@ def quantize(dt, *, resolution=timedelta(minutes=15)):
     return span(start, resolution)
 
 
-SpanType = TypeVar('SpanType', bound='span')
+SpanT = TypeVar('SpanT', bound='span')
 
 
 class span:
@@ -77,7 +77,7 @@ class span:
     _DATETIME_ATTRS = {'year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond', 'tzinfo'}
     _TIMEDELTA_ATTRS = {'days', 'seconds', 'microseconds', 'total_seconds'}
 
-    def __new__(cls: Type[SpanType], start: datetime, duration: timedelta=None, *, end: datetime=None):
+    def __new__(cls: Type[SpanT], start: datetime, duration: timedelta=None, *, end: datetime=None):
         if end is None and duration is None:
             raise ValueError('Must provide end or duration')
         if duration and duration < span.ZERO:
@@ -137,8 +137,7 @@ class span:
 
     def __eq__(self, other):
         return (
-            isinstance(other, span)
-            and
+            isinstance(other, span) and
             (self.start, self.duration) == (other.start, other.duration))
 
     def __hash__(self):
@@ -164,51 +163,95 @@ class span:
     def astimezone(self, tzinfo):
         return self.replace(start=self.start.astimezone(tzinfo))
 
-dates = parse_many(read_lines(FILENAME))
-quarter_hours = sorted(set(map(quantize, dates)), key=span.by_start)
 
-count_hours = lambda spans: sum(x.duration / span.HOUR for x in spans)
+def count_hours(spans):
+    return sum(x.duration / span.HOUR for x in spans)
 
-by_day = lambda dt: dt.start.date().isoformat() + ' ' + dt.start.strftime('%a')
-by_week = lambda dt: '{0} W{1:02}'.format(*dt.start.isocalendar())
-by_month = lambda dt: '{dt.year}-{dt.month:02}'.format(dt=dt.start)
-by_weekday = lambda dt: dt.start.strftime('%w %a')
 
-group_to_dict = lambda grp: {key: count_hours(qts) for key, qts in grp}
+def today(tz=timezone.utc):
+    return datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
 
-today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
 
-print('Months')
-months = groupby(quarter_hours, by_month)
-pprint(group_to_dict(months))
+class Stat:
 
-print()
-print('Weeks')
-weeks = groupby(quarter_hours, by_week)
-pprint(group_to_dict(take(8, weeks)))
+    key = lambda span: span  # type: Callable[[span], Any] # noqa: 731
+    fmt_key = str  # type: Callable[[Any], str]
+    limit = None  # type: Optional[int]
+    group_by = groupby
+    aggregate = count_hours  # type: Callable[[Iterable[span]], Any]
 
-print()
-print('Days')
-days_count = today.isoweekday() + 7  # this week and last
-days = groupby(quarter_hours, by_day)
-pprint(group_to_dict(take(days_count, days)))
+    @classmethod
+    def make(cls, spans):
+        limit = cls.limit
+        grouped = cls.group_by(spans, key=cls.key)
+        if limit:
+            grouped = take(limit, grouped)
+        fmt_key = cls.fmt_key
+        aggregate = cls.aggregate
+        return {fmt_key(key): aggregate(group) for key, group in grouped}
 
-print()
-print('Days of Week')
-weekdays = defaultdict(list)  # type: Dict[int, List[float]]
-for weekday, qts in groupby(quarter_hours, by_weekday):
-    hours = count_hours(qts)
-    weekdays[weekday].append(hours)
-pprint({
-    weekday: {
-        'avg': round(mean(hours), 2),
-        'sum': sum(hours),
-    } for weekday, hours in weekdays.items()
-})
+    def __init__(self, spans):
+        self.stats = self.make(spans)
 
-print()
-print('Longest session')
-max_gap = timedelta(minutes=30, microseconds=-1)  # just short of 2 quarter hours
-combined = span.combine(quarter_hours, max_gap=max_gap)
-best = sorted(combined, key=span.by_duration)[-1] if combined else None
-print(best)
+    def __str__(self):
+        name = type(self).__name__
+        stats = self.stats
+        if isinstance(stats, (list, dict)):
+            stats = pformat(self.stats)
+        return '{name}:\n{stats}\n'.format(**locals())
+
+
+class Months(Stat):
+    key = lambda span: (span.year, span.month)  # noqa: 731
+    fmt_key = lambda key: '{}-{:02}'.format(*key)  # noqa: 731
+
+
+class Weeks(Stat):
+    key = lambda span: span.start.isocalendar()[:2]  # noqa: 731
+    fmt_key = lambda key: '{}-W{:02}'.format(*key)  # noqa: 731
+    limit = 8
+
+
+class Days(Stat):
+    key = lambda x: x.start.date().isoformat() + ' ' + x.start.strftime('%a')  # noqa: 731
+    limit = today().isoweekday() + 7  # current week and last
+
+
+class Weekday(Stat):
+    key = lambda span: span.start.strftime('%w %a')  # noqa: 731
+
+    @classmethod
+    def make(cls, spans):
+        key = cls.key
+        weekdays = defaultdict(list)
+        for weekday, grp in groupby(spans, key=key):
+            hours = count_hours(grp)
+            weekdays[weekday].append(hours)
+        return {
+            weekday: {
+                'avg': round(mean(hours), 2),
+                'sum': sum(hours),
+            } for weekday, hours in weekdays.items()
+        }
+
+
+class LongestSession(Stat):
+    max_gap = timedelta(minutes=30, microseconds=-1)  # just < 2 quarter hours
+
+    @classmethod
+    def make(cls, spans):
+        combined = span.combine(spans, max_gap=cls.max_gap)
+        if combined:
+            return sorted(combined, key=span.by_duration)[-1]
+
+
+if __name__ == '__main__':
+    dates = parse_many(read_lines(FILENAME))
+    quarter_hours = sorted(
+        set(map(quantize, dates)),
+        key=span.by_start
+    )
+    for stat in (Months, Weeks, Days, Weekday, LongestSession):
+        print(stat(quarter_hours))
+
+# noqa: E731
