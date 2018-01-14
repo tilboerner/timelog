@@ -12,7 +12,7 @@ import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from functools import partial
-from itertools import groupby, islice
+from itertools import chain, groupby, islice
 from operator import attrgetter
 from pprint import pformat
 from statistics import mean
@@ -168,6 +168,16 @@ def today(tz=timezone.utc):
     return datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
 
 
+def title(string):
+    words = re.findall('[A-Z][^A-Z_]*', string)
+    groups = groupby(words, key=str.isupper)
+    words = chain.from_iterable(
+        (''.join(grp),) if is_upper else map(str.lower, grp)
+        for is_upper, grp in groups
+    )
+    return ' '.join(words).capitalize()
+
+
 class Stat:
 
     key = lambda period: period  # type: Callable[[period], Any] # noqa: 731
@@ -190,7 +200,7 @@ class Stat:
         self.stats = self.make(periods)
 
     def __str__(self):
-        name = type(self).__name__
+        name = title(type(self).__name__)
         stats = self.stats
         if isinstance(stats, (list, dict)):
             stats = pformat(self.stats)
@@ -213,7 +223,7 @@ class Days(Stat):
     limit = today().isoweekday() + 7  # current week and last
 
 
-class Weekday(Stat):
+class DaysOfWeek(Stat):
     key = lambda period: period.start.strftime('%w %a')  # noqa: 731
 
     @classmethod
@@ -249,5 +259,5 @@ if __name__ == '__main__':
         set(map(quantize, dates)),
         key=period.by_start
     )
-    for stat in (Months, Weeks, Days, Weekday, LongestSession):
+    for stat in (Months, Weeks, Days, DaysOfWeek, LongestSession):
         print(stat(quarter_hours))
