@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # coding: utf-8
-""" Simple analyzer and aggregator for a simple time log
+"""Simple analyzer and aggregator for a simple time log
 
 Reads a text file containing one iso-8601 timestamp per line and normalizes
 them to quarter-hours. These quarter-hours are treated as "time spent", which
@@ -23,7 +23,7 @@ def take(n, iterable):
     return islice(iterable, n)
 
 
-FILENAME = 'log.txt'
+DEFAULT_FILEPATH = 'log.txt'
 
 
 def read_lines(file, *, encoding='UTF-8'):
@@ -52,6 +52,7 @@ def parse_many(strings, *, fmt='%Y-%m-%dT%H:%M:%S%z', pre=_fix_datestr):
 
 
 def quantize(dt, *, resolution=timedelta(minutes=15)):
+    """Get the period from a fixed-size grid which contains the given time"""
     assert resolution < timedelta(days=1)
     # zero == midnight(dt)
     from_zero = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second,
@@ -241,7 +242,9 @@ class LongestSession(Stat):
 
 
 if __name__ == '__main__':
-    dates = parse_many(read_lines(FILENAME))
+    import sys
+    filepath = sys.argv[1] if (len(sys.argv) > 1) else DEFAULT_FILEPATH
+    dates = parse_many(read_lines(filepath))
     quarter_hours = sorted(
         set(map(quantize, dates)),
         key=period.by_start
