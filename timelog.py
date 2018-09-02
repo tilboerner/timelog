@@ -106,23 +106,37 @@ class Period:
             getattr(cls, name).__set__(obj, value)
 
     @classmethod
-    def combine(cls, periods, *, max_gap=ZERO):
-        combined = []
-        combining = None
-        for nxt in sorted(periods, key=attrgetter('start')):
-            if combining is None:
-                combining = nxt
-                continue
-            current_end = combining.end
-            if current_end + max_gap >= nxt.start:
-                new_end = max(current_end, nxt.end)
-                combining = combining.replace(end=new_end)
+    def merge(cls, periods, *, max_gap=ZERO):
+        """
+        Merge neighboring periods if the previous end overlaps with the following start.
+
+        The periods will not be sorted before merging. To merge all periods, sort them by
+        period.start first.
+
+        Args:
+            periods: An iterable of periods to merge
+            max_gap: The maximum difference between start and previous end that still allows meging
+
+        Yields:
+            Merged period objects in the same order as the input.
+
+        """
+        periods = iter(periods)
+        try:
+            current = next(periods)
+        except StopIteration:
+            return
+        for period in periods:
+            if current.start <= period.start:
+                first, second = current, period
             else:
-                combined.append(combining)
-                combining = None
-        if combining is not None:
-            combined.append(combining)
-        return combined
+                first, second = period, current
+            if first.end + max_gap >= second.start:
+                current = first.replace(end=max(first.end, second.end))
+            else:
+                yield current
+                current = period
+        yield current
 
     def __getattr__(self, name):
         if name in self._DATETIME_ATTRS:
@@ -248,9 +262,8 @@ class LongestSession(Stat):
 
     @classmethod
     def make(cls, periods):
-        combined = Period.combine(periods, max_gap=cls.max_gap)
-        if combined:
-            return sorted(combined, key=Period.by_duration)[-1]
+        merged = Period.merge(periods, max_gap=cls.max_gap)
+        return max(merged, key=Period.by_duration, default=None)
 
 
 if __name__ == '__main__':
