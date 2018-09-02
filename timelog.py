@@ -61,7 +61,7 @@ def quantize(dt, *, resolution=timedelta(minutes=15)):
     return period(start, resolution)
 
 
-class period:
+class Period:
     """A period of time defined by (start + duration = end)"""
 
     ZERO = timedelta()
@@ -75,22 +75,25 @@ class period:
     _DATETIME_ATTRS = {'year', 'month', 'day', 'hour', 'minute', 'second', 'microsecond', 'tzinfo'}
     _TIMEDELTA_ATTRS = {'days', 'seconds', 'microseconds', 'total_seconds'}
 
-    def __new__(cls: Type['period'],
+    def __new__(cls: Type['Period'],
                 start: datetime,
-                duration: timedelta=None,
+                duration: Optional[timedelta] = None,
                 *,
-                end: datetime=None):
-        if end is None and duration is None:
+                end: Optional[datetime] = None):
+        if duration is not None:
+            if duration < Period.ZERO:
+                raise ValueError('duration must not be negative')
+            if end is None:
+                end = start + duration
+        if end is not None:
+            if end < start:
+                raise ValueError('end must be >= start')
+            if duration is None:
+                duration = end - start
+        if duration is None:
+            # should have been provided or computed from end at this point
             raise ValueError('Must provide end or duration')
-        if duration and duration < period.ZERO:
-            raise ValueError('duration must not be negative')
-        if end and end < start:
-            raise ValueError('end must be >= start')
-        if end is None:
-            end = start + duration
-        elif duration is None:
-            duration = end - start
-        elif start + duration != end:
+        if start + duration != end:
             raise ValueError('duration must match end - start')
         obj = super().__new__(cls)
         cls._init(obj, start=start, duration=duration)
@@ -139,7 +142,7 @@ class period:
 
     def __eq__(self, other):
         return (
-            isinstance(other, period) and
+            isinstance(other, Period) and
             (self.start, self.duration) == (other.start, other.duration))
 
     def __hash__(self):
@@ -149,9 +152,8 @@ class period:
     def end(self) -> datetime:
         return self.start + self.duration
 
-    def replace(self, *, start: datetime=None, duration: timedelta=None, end: datetime=None):
-        if start is None:
-            start = self.start
+    def replace(self, *, start: datetime = None, duration: timedelta = None, end: datetime = None):
+        start = start or self.start
         if duration is None and end is None:
             duration = self.duration
         return type(self)(start, duration, end=end)
@@ -161,7 +163,7 @@ class period:
 
 
 def count_hours(periods):
-    return sum(x.duration / period.HOUR for x in periods)
+    return sum(x.duration / Period.HOUR for x in periods)
 
 
 def today(tz=timezone.utc):
@@ -180,11 +182,11 @@ def title(string):
 
 class Stat:
 
-    key = lambda period: period  # type: Callable[[period], Any] # noqa: 731
+    key = lambda period: period  # type: Callable[[Period], Any] # noqa: 731
     fmt_key = str  # type: Callable[[Any], str]
     limit = None  # type: Optional[int]
     group_by = groupby
-    aggregate = count_hours  # type: Callable[[Iterable[period]], Any]
+    aggregate = count_hours  # type: Callable[[Iterable[Period]], Any]
 
     @classmethod
     def make(cls, periods):
@@ -246,9 +248,9 @@ class LongestSession(Stat):
 
     @classmethod
     def make(cls, periods):
-        combined = period.combine(periods, max_gap=cls.max_gap)
+        combined = Period.combine(periods, max_gap=cls.max_gap)
         if combined:
-            return sorted(combined, key=period.by_duration)[-1]
+            return sorted(combined, key=Period.by_duration)[-1]
 
 
 if __name__ == '__main__':
@@ -257,7 +259,7 @@ if __name__ == '__main__':
     dates = parse_many(read_lines(filepath))
     quarter_hours = sorted(
         set(map(quantize, dates)),
-        key=period.by_start
+        key=Period.by_start
     )
     for stat in (Months, Weeks, Days, DaysOfWeek, LongestSession):
         print(stat(quarter_hours))
