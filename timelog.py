@@ -53,12 +53,12 @@ def parse_many(strings, *, fmt='%Y-%m-%dT%H:%M:%S%z', pre=_fix_datestr):
 
 def quantize(dt, *, resolution=timedelta(minutes=15)):
     """Get the period from a fixed-size grid which contains the given time"""
-    assert resolution < timedelta(days=1)
-    # zero == midnight(dt)
-    from_zero = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second,
-                          microseconds=dt.microsecond)
-    start = dt - (from_zero % resolution)
-    return period(start, resolution)
+    # The grid is zeroed at midnight, so resolution must fit into a day without leaving a remainder.
+    assert not Period.DAY % resolution
+    from_midnight = timedelta(hours=dt.hour, minutes=dt.minute, seconds=dt.second,
+                              microseconds=dt.microsecond)
+    start = dt - (from_midnight % resolution)
+    return Period(start, resolution)
 
 
 class Period:
@@ -66,6 +66,7 @@ class Period:
 
     ZERO = timedelta()
     HOUR = timedelta(seconds=3600)
+    DAY = timedelta(days=1)
 
     by_start = attrgetter('start')
     by_duration = attrgetter('duration')
